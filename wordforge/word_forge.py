@@ -12,6 +12,7 @@ Purpose:
 __version__ = "0.1.0"
 
 from typing import List, Dict, Tuple, Union, cast
+from ansi import colorize, BRIGHT_CYAN, BRIGHT_BLUE
 import json
 import argparse
 import datetime
@@ -104,7 +105,7 @@ def execute_quiz_mode():
     session_quiz_count: int = 1
 
     while True:
-        selected_words: WordDataList = select_words_for_quiz(all_words, num_to_select=5)
+        selected_words: WordDataList = select_words_for_quiz(all_words)
         logging.info("Word group chosen for quiz")
         if not selected_words:
             logging.info("No words available for quiz")
@@ -291,7 +292,7 @@ def show_quizzes(
             data_label = f"{days_ago} days ago"
         print(f"--- Quiz ({session_quiz_count}) ---")
         print(
-            f"Word: {entry['word']}\
+            f"Word: {colorize(cast(str, entry['word']), BRIGHT_CYAN)}\
                 (QC: {entry['quiz_count']}  ICC: {entry['incorrect_count']})\
                     {data_label}"
         )
@@ -306,7 +307,7 @@ def show_quizzes(
 
         meanings: List[str] = []
         for meaning, part_of_speech in cast(List[MeaningTuple], entry["meanings"]):
-            meanings.append(meaning + "(" + part_of_speech + ")")
+            meanings.append(colorize(meaning, BRIGHT_BLUE) + "(" + part_of_speech + ")")
         print(", ".join(meanings))
 
         notes: List[str] = []
