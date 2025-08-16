@@ -9,7 +9,7 @@ Purpose:
     at any time.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.2"
 
 from typing import List, Dict, Tuple, Union, cast
 from ansi import colorize, BRIGHT_CYAN, BRIGHT_BLUE
@@ -79,20 +79,38 @@ def execute_input_mode():
     """Execute input mode"""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
+    words_dict: dict[str, WordEntry] = {}  ## O(1) 검색을 위한 dict 생성
+    for entry in all_words:
+        words_dict[cast(str, entry["word"])] = entry
     logging.info(f"Loaded word count: {len(all_words)}")
 
-    initial_word_count = len(all_words)
+    modified: bool = False
     while True:
-        new_word_entry: Union[WordEntry, None] = add_new_word_prompt()
-        if new_word_entry is None:
+        word = input("\nEnter the word (e.g., 'backfire'): ").strip()
+        if not word:
             break
-        all_words.append(new_word_entry)
-        logging.info(
-            f"Added new word: {new_word_entry['word']}, \
-                     Current word count: {len(all_words)}"
-        )
 
-    if initial_word_count < len(all_words):
+        entry: Union[WordEntry, None] = words_dict.get(word)
+        if entry is None:
+            new_word_entry: Union[WordEntry, None] = add_new_word_prompt(word)
+            if new_word_entry is None:
+                break
+            all_words.append(new_word_entry)
+            words_dict[cast(str, new_word_entry["word"])] = new_word_entry
+            modified = True
+            logging.info(
+                f"Added new word: {new_word_entry['word']}, "
+                f"Current word count: {len(all_words)}"
+            )
+        else:
+            modify_existing_word_prompt(entry)
+            modified = True
+            logging.info(
+                f"Modified existing word: {entry['word']}, "
+                f"Current word count: {len(all_words)}"
+            )
+
+    if modified:
         save_words_to_file(WORDS_FILE_NAME, all_words)
 
 
@@ -156,20 +174,18 @@ def save_words_to_file(file_path: str, words_data: WordDataList):
 
 
 # --------------------------------------------------
-def add_new_word_prompt() -> Union[WordEntry, None]:
+def add_new_word_prompt(new_word: str) -> Union[WordEntry, None]:
     """
     Prompts the user to enter new word details with numbered part-of-speech options.
     Returns a WordEntry dictionary or None if cancelled.
     """
 
-    word = input("\nEnter the word (e.g., 'backfire'): ").strip()
-    if not word:
-        return None
-
     meanings_list: MeaningsList = []
     print("\n--- Enter Meanings ---")
     while True:
-        meaning = input(f"Enter meaning for {word} (e.g., '역효과가 나다'): ").strip()
+        meaning = input(
+            f"Enter meaning for {new_word} (e.g., '역효과가 나다'): "
+        ).strip()
         if not meaning:
             if not meanings_list:
                 print("Meaning cannot be empty. Please try again.")
@@ -204,7 +220,7 @@ def add_new_word_prompt() -> Union[WordEntry, None]:
         notes_list.append(note)
 
     new_word_entry: WordEntry = {
-        "word": word,
+        "word": new_word,
         "meanings": meanings_list,
         "notes": notes_list,
         "created_date": datetime.date.today().isoformat(),
@@ -213,6 +229,53 @@ def add_new_word_prompt() -> Union[WordEntry, None]:
         "last_quiz_date": "",
     }
     return new_word_entry
+
+
+# --------------------------------------------------
+def modify_existing_word_prompt(entry: WordEntry):
+    meanings_list: MeaningsList = []
+    print("\n--- Enter Meanings ---")
+    while True:
+        meaning = input(
+            f"Enter meaning for {entry['word']} (e.g., '역효과가 나다'): "
+        ).strip()
+        if not meaning:
+            if not meanings_list:
+                print("Meaning cannot be empty. Please try again.")
+                continue
+            else:
+                break
+
+        for i, pos_name in enumerate(POS_OPTIONS):
+            print(f"{i + 1}. {pos_name}")
+
+        while True:
+            pos_choice_str = input("Select part of speech by number: ").strip()
+            if not pos_choice_str:
+                print("Input cannot be empty. Please enter a number.")
+                continue
+
+            pos_choice_int = int(pos_choice_str)
+            if not (1 <= pos_choice_int <= len(POS_OPTIONS)):
+                print("Invalid number. Please choose from the options.")
+                continue
+            selected = POS_OPTIONS[pos_choice_int - 1]
+            break
+
+        meanings_list.append((meaning, selected))
+
+    notes_list: NotesList = []
+    print("\n--- Enter Notes (Optional) ---")
+    while True:
+        note = input("Enter a note: ").strip()
+        if not note:  # 그냥 엔터 치면 종료
+            break
+        notes_list.append(note)
+
+    entry["meanings"] = meanings_list
+    entry["notes"] = notes_list
+
+    return entry
 
 
 # --------------------------------------------------
