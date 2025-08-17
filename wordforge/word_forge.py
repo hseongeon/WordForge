@@ -49,7 +49,7 @@ def get_args():
 
     parser = argparse.ArgumentParser(
         description=(
-            "A CLI tool to help memorize English vocabularythrough self quizzes"
+            "A CLI tool to help memorize English vocabulary through self-quizzes"
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -79,7 +79,7 @@ def execute_input_mode():
     """Execute input mode"""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
-    words_dict: dict[str, WordEntry] = {}  ## O(1) 검색을 위한 dict 생성
+    words_dict: dict[str, WordEntry] = {}  ## Create a dict for O(1) lookups
     for entry in all_words:
         words_dict[cast(str, entry["word"])] = entry
     logging.info(f"Loaded word count: {len(all_words)}")
@@ -92,9 +92,7 @@ def execute_input_mode():
 
         entry: Union[WordEntry, None] = words_dict.get(word)
         if entry is None:
-            new_word_entry: Union[WordEntry, None] = add_new_word_prompt(word)
-            if new_word_entry is None:
-                break
+            new_word_entry: WordEntry = add_new_word_prompt(word)
             all_words.append(new_word_entry)
             words_dict[cast(str, new_word_entry["word"])] = new_word_entry
             modified = True
@@ -128,10 +126,10 @@ def execute_quiz_mode():
         if not selected_words:
             logging.info("No words available for quiz")
             break
-        session_quiz_count, should_quit = show_quizzes(
+        session_quiz_count, keep_running = show_quizzes(
             selected_words, session_quiz_count
         )
-        if not should_quit:
+        if not keep_running:
             save_words_to_file(WORDS_FILE_NAME, all_words)
             break
 
@@ -151,8 +149,8 @@ def load_words_from_file(file_path: str) -> WordDataList:
         return []
     except json.JSONDecodeError:
         logging.error(
-            f"Failed to load '{file_path}': invalid JSON format. \
-                      Please check or fix the file manually"
+            f"Failed to load '{file_path}': invalid JSON format. "
+            "Please check or fix the file manually"
         )
         exit(1)
 
@@ -166,7 +164,6 @@ def save_words_to_file(file_path: str, words_data: WordDataList):
 
     try:
         with open(file_path, "w", encoding="utf-8") as fh:
-            # Dump the list of dictionaries to JSON format
             json.dump(words_data, fh, ensure_ascii=False, indent=4)
         logging.info(f"'{file_path}' successfully saved")
     except IOError as e:
@@ -174,55 +171,16 @@ def save_words_to_file(file_path: str, words_data: WordDataList):
 
 
 # --------------------------------------------------
-def add_new_word_prompt(new_word: str) -> Union[WordEntry, None]:
-    """
-    Prompts the user to enter new word details with numbered part-of-speech options.
-    Returns a WordEntry dictionary or None if cancelled.
-    """
+def add_new_word_prompt(new_word: str) -> WordEntry:
+    """Prompts the user to enter meanings and notes for a new word."""
 
-    meanings_list: MeaningsList = []
-    print("\n--- Enter Meanings ---")
-    while True:
-        meaning = input(
-            f"Enter meaning for {new_word} (e.g., '역효과가 나다'): "
-        ).strip()
-        if not meaning:
-            if not meanings_list:
-                print("Meaning cannot be empty. Please try again.")
-                continue
-            else:
-                break
-
-        for i, pos_name in enumerate(POS_OPTIONS):
-            print(f"{i + 1}. {pos_name}")
-
-        while True:
-            pos_choice_str = input("Select part of speech by number: ").strip()
-            if not pos_choice_str:
-                print("Input cannot be empty. Please enter a number.")
-                continue
-
-            pos_choice_int = int(pos_choice_str)
-            if not (1 <= pos_choice_int <= len(POS_OPTIONS)):
-                print("Invalid number. Please choose from the options.")
-                continue
-            selected = POS_OPTIONS[pos_choice_int - 1]
-            break
-
-        meanings_list.append((meaning, selected))
-
-    notes_list: NotesList = []
-    print("\n--- Enter Notes (Optional) ---")
-    while True:
-        note = input("Enter a note: ").strip()
-        if not note:  # 그냥 엔터 치면 종료
-            break
-        notes_list.append(note)
+    meanings: MeaningsList = input_meanings(new_word)
+    notes: NotesList = input_notes()
 
     new_word_entry: WordEntry = {
         "word": new_word,
-        "meanings": meanings_list,
-        "notes": notes_list,
+        "meanings": meanings,
+        "notes": notes,
         "created_date": datetime.date.today().isoformat(),
         "quiz_count": 0,
         "incorrect_count": 0,
@@ -233,46 +191,12 @@ def add_new_word_prompt(new_word: str) -> Union[WordEntry, None]:
 
 # --------------------------------------------------
 def modify_existing_word_prompt(entry: WordEntry):
-    meanings_list: MeaningsList = []
-    print("\n--- Enter Meanings ---")
-    while True:
-        meaning = input(
-            f"Enter meaning for {entry['word']} (e.g., '역효과가 나다'): "
-        ).strip()
-        if not meaning:
-            if not meanings_list:
-                print("Meaning cannot be empty. Please try again.")
-                continue
-            else:
-                break
+    """Modify an existing word entry by re-entering its meanings and notes."""
 
-        for i, pos_name in enumerate(POS_OPTIONS):
-            print(f"{i + 1}. {pos_name}")
+    meanings: MeaningsList = input_meanings(cast(str, entry["word"]))
+    notes_list: NotesList = input_notes()
 
-        while True:
-            pos_choice_str = input("Select part of speech by number: ").strip()
-            if not pos_choice_str:
-                print("Input cannot be empty. Please enter a number.")
-                continue
-
-            pos_choice_int = int(pos_choice_str)
-            if not (1 <= pos_choice_int <= len(POS_OPTIONS)):
-                print("Invalid number. Please choose from the options.")
-                continue
-            selected = POS_OPTIONS[pos_choice_int - 1]
-            break
-
-        meanings_list.append((meaning, selected))
-
-    notes_list: NotesList = []
-    print("\n--- Enter Notes (Optional) ---")
-    while True:
-        note = input("Enter a note: ").strip()
-        if not note:  # 그냥 엔터 치면 종료
-            break
-        notes_list.append(note)
-
-    entry["meanings"] = meanings_list
+    entry["meanings"] = meanings
     entry["notes"] = notes_list
 
     return entry
@@ -291,32 +215,29 @@ def select_words_for_quiz(
     if not words_data:
         return []
 
-    # 모든 단어의 priority_score 계산
-    # score = quiz_count - incorrect_count
-    # 이 score가 낮을수록 더 자주 출제되어야 합니다.
     priority_scores: List[int] = [
         cast(int, entry["quiz_count"]) - cast(int, entry["incorrect_count"])
         for entry in words_data
     ]
 
-    # 최대 priority_score를 찾아 가중치 계산에 사용
-    # 모든 단어의 score가 0일 수도 있으므로, max_score를 적절히 처리해야 합니다.
-    # 만약 단어가 하나도 없거나, 모든 score가 0이면 max_score_val은 0이 될 수 있습니다.
+    # Find the maximum priority_score for use in weight calculation.
+    # If there are no words or all scores are 0, max_score_val may be 0.
     max_score_val = max(priority_scores) if priority_scores else 0
 
-    # score를 random.choices()에 사용할 weight로 변환
-    # weight가 높을수록 뽑힐 확률이 높습니다.
-    # (max_score_val + 1) - score를 하면, score가 낮을수록 weight가 높아집니다.
+    # Convert the score into a weight for use in random.choices().
+    # The higher the weight, the greater the probability of being selected.
     weights: List[int] = [(max_score_val + 1) - score for score in priority_scores]
 
-    # random.choices()를 사용하여 단어 추출
-    # 단어 목록의 총 개수보다 num_to_select가 크면 오류가 나므로, min 함수 사용
+    # Use the min function because an error occurs if num_to_select exceeds
+    # the total number.
     num_actual_select = min(num_to_select, len(words_data))
 
-    # choices 함수는 중복을 허용하여 뽑을 수 있습니다.
+    # random.choices() allows duplicates.
     selected_words_data_with_duplicates = random.choices(
         words_data, weights=weights, k=num_actual_select
     )
+
+    # Duplicates must be removed manually.
     deduplicated_words_data = deduplicate_words(selected_words_data_with_duplicates)
 
     return deduplicated_words_data
@@ -325,7 +246,9 @@ def select_words_for_quiz(
 # --------------------------------------------------
 def deduplicate_words(words_data: WordDataList) -> WordDataList:
     """
-    random.choices() 함수는 중복 추출을 허용하기 때문에 중복을 직접 제거하여야 한다.
+    Remove duplicate word entries from the list using object identity.
+    Only entries that point to the exact same object instance are removed.
+    This ensures faster comparison than equality checks.
     """
 
     deduplicated: WordDataList = []
@@ -345,23 +268,17 @@ def show_quizzes(
     """
 
     for entry in quiz_words_data:
-        created_date = datetime.date.fromisoformat(cast(str, entry["created_date"]))
-        days_ago = (datetime.date.today() - created_date).days
-        if days_ago == 0:
-            data_label = "today"
-        elif days_ago == 1:
-            data_label = "1 day ago"
-        else:
-            data_label = f"{days_ago} days ago"
         print(f"--- Quiz ({session_quiz_count}) ---")
         print(
-            f"Word: {colorize(cast(str, entry['word']), BRIGHT_CYAN)}\
-                (QC: {entry['quiz_count']}  ICC: {entry['incorrect_count']})\
-                    {data_label}"
+            f"Word: {colorize(cast(str, entry['word']), BRIGHT_CYAN)}"
+            f"{' ' * 8}"
+            f"(QC: {entry['quiz_count']}  ICC: {entry['incorrect_count']})"
+            f"{' ' * 8}"
+            f"{format_days_ago(cast(str, entry['created_date']))}"
         )
 
-        # 유저가 단어의 뜻을 말한 후 엔터를 누르면 넘어간다.
-        # 내용을 입력할 필요가 없다. 유저가 뜻을 상기시키기는 행위로 충분하다.
+        # After recalling the meaning, the user simply presses Enter to continue.
+        # No text input is required — the act of recalling the meaning is sufficient.
         user_answer = input(
             "Speak the word's meaning, then hit Enter to reveal the answer. (quit: q): "
         ).strip()
@@ -401,6 +318,89 @@ def show_quizzes(
         session_quiz_count += 1
 
     return session_quiz_count, True
+
+
+# --------------------------------------------------
+def format_days_ago(date_str: str) -> str:
+    """
+    Convert an ISO-formatted date string into a human-readable relative date label.
+    Returns "today" if the date is today, "1 day ago" if it was yesterday,
+    or "{n} days ago" for earlier dates.
+    """
+
+    created_date = datetime.date.fromisoformat(date_str)
+    days_ago = (datetime.date.today() - created_date).days
+    if days_ago == 0:
+        return "today"
+    if days_ago == 1:
+        return "1 day ago"
+    return f"{days_ago} days ago"
+
+
+# --------------------------------------------------
+def select_pos() -> str:
+    """
+    Prompt the user to select a part of speech from the predefined POS_OPTIONS list.
+    The user must enter a valid number corresponding to an option. Returns the
+    selected part of speech as a string.
+    """
+
+    for i, pos_name in enumerate(POS_OPTIONS):
+        print(f"{i + 1}. {pos_name}")
+
+    while True:
+        pos_choice_str = input("Select part of speech by number: ").strip()
+        if not pos_choice_str:
+            print("Input cannot be empty. Please enter a number.")
+            continue
+
+        pos_choice_int = int(pos_choice_str)
+        if not (1 <= pos_choice_int <= len(POS_OPTIONS)):
+            print("Invalid number. Please choose from the options.")
+            continue
+        selected: str = POS_OPTIONS[pos_choice_int - 1]
+        return selected
+
+
+# --------------------------------------------------
+def input_meanings(word: str) -> MeaningsList:
+    """
+    Prompt the user to enter one or more meanings for a given word,
+    each with a selected part of speech. Continues until at least
+    one meaning is provided and the user enters an empty input.
+    """
+
+    print("\n--- Enter Meanings ---")
+
+    meanings: MeaningsList = []
+    while True:
+        meaning = input(f"Enter meaning for '{word}' (e.g., '역효과가 나다'): ").strip()
+        if not meaning:
+            if not meanings:
+                print("Meaning cannot be empty. Please try again.")
+                continue
+            break
+        meanings.append((meaning, select_pos()))
+    return meanings
+
+
+# --------------------------------------------------
+def input_notes() -> NotesList:
+    """
+    Prompt the user to enter optional notes for a word.
+    The user can input multiple notes, and pressing Enter
+    without input ends the note entry process.
+    """
+
+    print("\n--- Enter Notes ---")
+
+    notes: NotesList = []
+    while True:
+        note = input("Enter a note (Optional): ").strip()
+        if not note:
+            break
+        notes.append(note)
+    return notes
 
 
 # --------------------------------------------------
