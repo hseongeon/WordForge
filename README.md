@@ -1,12 +1,10 @@
 # WordForge
 
-단어 암기 학습을 돕기 위한 CLI 기반 퀴즈 앱
+Author : seong-eon Hwang (hseongeon@gmail.com)
+Date   : 2025-06-18
 
-## Version
-
-`v0.1.0`
-
-## Features
-
-- JSON 기반 단어 저장
-- 잘 외워지지 않은 단어에 가중치를 부여하는 랜덤 퀴즈 생성
+Purpose:
+    WordForge is a command-line tool that helps users memorize English
+    vocabulary by allowing them to add words to a list and quiz themselves
+    at any time. Quiz questions are selected based on a priority-based system
+    that accounts for previous correct and incorrect answers.

@@ -6,7 +6,8 @@ Date   : 2025-06-18
 Purpose:
     WordForge is a command-line tool that helps users memorize English
     vocabulary by allowing them to add words to a list and quiz themselves
-    at any time.
+    at any time. Quiz questions are selected based on a priority-based system
+    that accounts for previous correct and incorrect answers.
 """
 
 __version__ = "0.1.2"
@@ -392,11 +393,11 @@ def input_notes() -> NotesList:
     without input ends the note entry process.
     """
 
-    print("\n--- Enter Notes ---")
+    print("\n--- Enter Notes (optional) ---")
 
     notes: NotesList = []
     while True:
-        note = input("Enter a note (Optional): ").strip()
+        note = input("Enter a note: ").strip()
         if not note:
             break
         notes.append(note)
