@@ -275,7 +275,7 @@ def show_quizzes(
             f"{' ' * 8}"
             f"(QC: {entry['quiz_count']}  ICC: {entry['incorrect_count']})"
             f"{' ' * 8}"
-            f"{format_days_ago(cast(str, entry['created_date']))}"
+            f"{format_days_ago(cast(str, entry['last_quiz_date']))}"
         )
 
         # After recalling the meaning, the user simply presses Enter to continue.
@@ -325,12 +325,16 @@ def show_quizzes(
 def format_days_ago(date_str: str) -> str:
     """
     Convert an ISO-formatted date string into a human-readable relative date label.
-    Returns "today" if the date is today, "1 day ago" if it was yesterday,
-    or "{n} days ago" for earlier dates.
+    Returns:
+        - "first time" if the word has never been quizzed before,
+        - "today" if the date is today,
+        - "1 day ago" if it was yesterday,
+        - "{n} days ago" for earlier dates.
     """
 
-    created_date = datetime.date.fromisoformat(date_str)
-    days_ago = (datetime.date.today() - created_date).days
+    if not date_str:
+        return "first time"
+    days_ago = (datetime.date.today() - datetime.date.fromisoformat(date_str)).days
     if days_ago == 0:
         return "today"
     if days_ago == 1:
