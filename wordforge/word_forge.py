@@ -21,7 +21,7 @@ import random
 import logging
 
 
-# --- type hint ---
+# --- Type hint ---
 MeaningTuple = Tuple[str, str]
 MeaningsList = List[MeaningTuple]
 NotesList = List[str]
@@ -46,7 +46,7 @@ WORDS_FILE_NAME = "my_words.json"
 
 # --------------------------------------------------
 def get_args():
-    """Get command-line arguments"""
+    """Get command-line arguments."""
 
     parser = argparse.ArgumentParser(
         description=(
@@ -77,10 +77,10 @@ def main():
 
 # --------------------------------------------------
 def execute_input_mode():
-    """Execute input mode"""
+    """Execute input mode."""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
-    words_dict: dict[str, WordEntry] = {}  ## Create a dict for O(1) lookups
+    words_dict: dict[str, WordEntry] = {}  ## Create a dict for O(1) lookups.
     for entry in all_words:
         words_dict[cast(str, entry["word"])] = entry
     logging.info(f"Loaded word count: {len(all_words)}")
@@ -115,7 +115,7 @@ def execute_input_mode():
 
 # --------------------------------------------------
 def execute_quiz_mode():
-    """Execute quiz mode"""
+    """Execute quiz mode."""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
     logging.info(f"Loaded word count: {len(all_words)}")
@@ -123,9 +123,9 @@ def execute_quiz_mode():
 
     while True:
         selected_words: WordDataList = select_words_for_quiz(all_words)
-        logging.info("Word group chosen for quiz")
+        logging.info("Word group chosen for quiz.")
         if not selected_words:
-            logging.info("No words available for quiz")
+            logging.info("No words available for quiz.")
             break
         session_quiz_count, keep_running = show_quizzes(
             selected_words, session_quiz_count
@@ -146,12 +146,12 @@ def load_words_from_file(file_path: str) -> WordDataList:
         with open(file_path, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
-        logging.info(f"'{file_path}' not found. Creating a new word list")
+        logging.info(f"'{file_path}' not found. Creating a new word list.")
         return []
     except json.JSONDecodeError:
         logging.error(
             f"Failed to load '{file_path}': invalid JSON format. "
-            "Please check or fix the file manually"
+            "Please check or fix the file manually."
         )
         exit(1)
 
@@ -166,7 +166,7 @@ def save_words_to_file(file_path: str, words_data: WordDataList):
     try:
         with open(file_path, "w", encoding="utf-8") as fh:
             json.dump(words_data, fh, ensure_ascii=False, indent=4)
-        logging.info(f"'{file_path}' successfully saved")
+        logging.info(f"'{file_path}' successfully saved.")
     except IOError as e:
         logging.error(f"Could not save to '{file_path}'. {e}")
 
