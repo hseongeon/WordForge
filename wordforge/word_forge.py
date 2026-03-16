@@ -13,12 +13,15 @@ Purpose:
 __version__ = "0.1.2"
 
 from typing import List, Dict, Tuple, Union, cast
-from ansi import colorize, BRIGHT_CYAN, BRIGHT_BLUE
+import readline  # type: ignore[unused-import] # noqa: F401
 import json
 import argparse
 import datetime
 import random
 import logging
+import unicodedata
+
+from ansi import colorize, CYAN, BLUE, RED
 
 
 # --- Type hint ---
@@ -39,6 +42,7 @@ POS_OPTIONS = [
     "대명사",
     "감탄사",
     "관사",
+    "숙어",
 ]
 
 WORDS_FILE_NAME = "my_words.json"
@@ -80,8 +84,9 @@ def execute_input_mode():
     """Execute input mode."""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
-    words_dict: dict[str, WordEntry] = {}  ## Create a dict for O(1) lookups.
+    words_dict: dict[str, WordEntry] = {}  ## Create a dict for O(1) lookups
     for entry in all_words:
+        normalize_entry(entry)
         words_dict[cast(str, entry["word"])] = entry
     logging.info(f"Loaded word count: {len(all_words)}")
 
@@ -102,12 +107,10 @@ def execute_input_mode():
                 f"Current word count: {len(all_words)}"
             )
         else:
-            modify_existing_word_prompt(entry)
-            modified = True
-            logging.info(
-                f"Modified existing word: {entry['word']}, "
-                f"Current word count: {len(all_words)}"
-            )
+            if should_modify(entry):
+                modify_existing_word_prompt(entry)
+                modified = True
+                logging.info(f"Modified existing word: {entry['word']}")
 
     if modified:
         save_words_to_file(WORDS_FILE_NAME, all_words)
@@ -118,6 +121,8 @@ def execute_quiz_mode():
     """Execute quiz mode."""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
+    for entry in all_words:
+        normalize_entry(entry)
     logging.info(f"Loaded word count: {len(all_words)}")
     session_quiz_count: int = 1
 
@@ -187,6 +192,7 @@ def add_new_word_prompt(new_word: str) -> WordEntry:
         "incorrect_count": 0,
         "last_quiz_date": "",
     }
+    normalize_entry(new_word_entry)
     return new_word_entry
 
 
@@ -199,8 +205,7 @@ def modify_existing_word_prompt(entry: WordEntry):
 
     entry["meanings"] = meanings
     entry["notes"] = notes_list
-
-    return entry
+    normalize_entry(entry)
 
 
 # --------------------------------------------------
@@ -271,7 +276,7 @@ def show_quizzes(
     for entry in quiz_words_data:
         print(f"--- Quiz ({session_quiz_count}) ---")
         print(
-            f"Word: {colorize(cast(str, entry['word']), BRIGHT_CYAN)}"
+            f"Word: {colorize(cast(str, entry['word']), CYAN)}"
             f"{' ' * 8}"
             f"(QC: {entry['quiz_count']}  ICC: {entry['incorrect_count']})"
             f"{' ' * 8}"
@@ -288,7 +293,7 @@ def show_quizzes(
 
         meanings: List[str] = []
         for meaning, part_of_speech in cast(List[MeaningTuple], entry["meanings"]):
-            meanings.append(colorize(meaning, BRIGHT_BLUE) + "(" + part_of_speech + ")")
+            meanings.append(colorize(meaning, BLUE) + "(" + part_of_speech + ")")
         print(", ".join(meanings))
 
         notes: List[str] = []
@@ -299,7 +304,7 @@ def show_quizzes(
 
         while True:
             user_answer = input(
-                "Did you get the meaning correct? (1. Yes, 2. No): "
+                "Did you get the meaning correct? (1. Yes, 2. No, 3. Modify): "
             ).strip()
             if user_answer == "1":
                 break
@@ -308,6 +313,9 @@ def show_quizzes(
                 incorrect_count += 1
                 entry["incorrect_count"] = incorrect_count
                 break
+            elif user_answer == "3":
+                modify_existing_word_prompt(entry)
+                logging.info(f"Modified existing word: {entry['word']}")
             else:
                 continue
 
@@ -356,9 +364,11 @@ def select_pos() -> str:
     while True:
         pos_choice_str = input("Select part of speech by number: ").strip()
         if not pos_choice_str:
-            print("Input cannot be empty. Please enter a number.")
+            print("Input cannot be empty.")
             continue
-
+        if not pos_choice_str.isdigit():
+            print("Please enter a number.")
+            continue
         pos_choice_int = int(pos_choice_str)
         if not (1 <= pos_choice_int <= len(POS_OPTIONS)):
             print("Invalid number. Please choose from the options.")
@@ -380,6 +390,7 @@ def input_meanings(word: str) -> MeaningsList:
     meanings: MeaningsList = []
     while True:
         meaning = input(f"Enter meaning for '{word}' (e.g., '역효과가 나다'): ").strip()
+
         if not meaning:
             if not meanings:
                 print("Meaning cannot be empty. Please try again.")
@@ -406,6 +417,60 @@ def input_notes() -> NotesList:
             break
         notes.append(note)
     return notes
+
+
+# --------------------------------------------------
+def should_modify(entry: WordEntry) -> bool:
+    """
+    Display the details of the given word and ask the user
+    whether they want to modify it.
+    """
+
+    print(f"Word: {entry['word']}")
+
+    meanings: List[str] = []
+    for meaning, part_of_speech in cast(List[MeaningTuple], entry["meanings"]):
+        meanings.append(meaning + "(" + part_of_speech + ")")
+    print(", ".join(meanings))
+
+    notes: List[str] = []
+    for i, note in enumerate(cast(NotesList, entry["notes"])):
+        notes.append("({}) ".format(i + 1) + note)
+    if notes:
+        print(" ".join(notes))
+
+    while True:
+        user_answer = input(
+            colorize("Modify this word? (1. Yes, 2. No): ", RED)
+        ).strip()
+        if user_answer == "1":
+            return True
+        elif user_answer == "2":
+            return False
+        else:
+            continue
+
+
+# --------------------------------------------------
+def normalize(s: str) -> str:
+    """Normalize a string to NFC form for consistent Unicode representation."""
+
+    return unicodedata.normalize("NFC", s)
+
+
+# --------------------------------------------------
+def normalize_entry(entry: WordEntry):
+    """Normalize all text fields of a given word entry using normalize()"""
+
+    entry["word"] = normalize(cast(str, entry["word"]))
+
+    meanings_list = cast(List[MeaningTuple], entry["meanings"])
+    for i, (meaning, part_of_speech) in enumerate(meanings_list):
+        meanings_list[i] = (normalize(meaning), normalize(part_of_speech))
+
+    notes_list = cast(NotesList, entry["notes"])
+    for i, note in enumerate(notes_list):
+        notes_list[i] = normalize(note)
 
 
 # --------------------------------------------------
