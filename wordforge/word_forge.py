@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
 Author : seong-eon Hwang (hseongeon@gmail.com)
-Date   : 2025-06-18
+Date   : 2025-06-18 ~
 
 Purpose:
-    WordForge is a command-line tool that helps users memorize English
-    vocabulary by allowing them to add words to a list and quiz themselves
-    at any time. Quiz questions are selected based on a priority-based system
-    that accounts for previous correct and incorrect answers.
+    WordForge는 사용자가 영어 단어를 직접 리스트에 추가하고, 원할 때마다 스스로 테스트를
+    치를 수 있도록 도와주는 CLI 기반의 암기 도구입니다.
+    단순히 무작위로 문제를 내는 것이 아니라, 우선순위 기반 시스템을 사용합니다.
+    사용자가 이전에 정답을 맞혔는지 혹은 틀렸는지에 대한 이력을 기록하고,
+    이 데이터를 바탕으로 자주 틀리거나 아직 익숙하지 않은 단어를 더 자주 노출시켜
+    암기 효율을 극대화합니다.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.4"
 
 from typing import List, Dict, Tuple, Union, cast
 import readline  # type: ignore[unused-import] # noqa: F401
@@ -20,8 +22,10 @@ import datetime
 import random
 import logging
 import unicodedata
+import shutil
+import os
 
-from ansi import colorize, CYAN, BLUE, RED
+from ansi import colorize, CYAN, BLUE, RED, BRIGHT_GREEN
 
 
 # --- Type hint ---
@@ -46,22 +50,20 @@ POS_OPTIONS = [
 ]
 
 WORDS_FILE_NAME = "my_words.json"
+BACKUP_DIRECTORY = "backup"
 
 
 # --------------------------------------------------
 def get_args():
-    """Get command-line arguments."""
+    """커맨드 라인 인자를 얻는다."""
 
     parser = argparse.ArgumentParser(
-        description=(
-            "A CLI tool to help memorize English vocabulary through self-quizzes"
-        ),
+        description=("퀴즈를 통해 영어 단어 암기를 도와주는 커맨드 라인 툴"),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser.add_argument(
-        "-q", "--quiz", help="Execute the quiz mode", action="store_true"
-    )
+    parser.add_argument("-b", "--backup", help="백업 모드 실행", action="store_true")
+    parser.add_argument("-q", "--quiz", help="퀴즈 모드 실행", action="store_true")
 
     return parser.parse_args()
 
@@ -73,6 +75,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     args = get_args()
+    if args.backup:
+        execute_backup_mode()
+        exit(0)
     if args.quiz:
         execute_quiz_mode()
     else:
@@ -80,19 +85,47 @@ def main():
 
 
 # --------------------------------------------------
+def copy_file_to_subdir(filename: str, dir_name: str):
+    """지정된 디렉토리로 파일을 복사한다"""
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    source_path = os.path.join(current_dir, filename)
+    target_dir = os.path.join(current_dir, dir_name)
+
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir)
+
+    target_path = os.path.join(target_dir, filename)
+
+    try:
+        shutil.copy2(source_path, target_path)
+        print("백업이 완료되었습니다.")
+    except FileNotFoundError:
+        print(f"'{filename}' 파일을 찾을 수 없습니다.")
+    except Exception as e:
+        print(f"시스템 오류: {e}")
+
+
+def execute_backup_mode():
+    """백업 모드 실행"""
+
+    copy_file_to_subdir(WORDS_FILE_NAME, BACKUP_DIRECTORY)
+
+
+# --------------------------------------------------
 def execute_input_mode():
-    """Execute input mode."""
+    """입력 모드 실행"""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
     words_dict: dict[str, WordEntry] = {}  ## Create a dict for O(1) lookups
     for entry in all_words:
         normalize_entry(entry)
         words_dict[cast(str, entry["word"])] = entry
-    logging.info(f"Loaded word count: {len(all_words)}")
+    logging.info(f"불러온 단어 {len(all_words)}개")
 
     modified: bool = False
     while True:
-        word = input("\nEnter the word (e.g., 'backfire'): ").strip()
+        word = input("\n단어 입력 (예:'backfire'): ").strip()
         if not word:
             break
 
@@ -102,15 +135,23 @@ def execute_input_mode():
             all_words.append(new_word_entry)
             words_dict[cast(str, new_word_entry["word"])] = new_word_entry
             modified = True
+            print_entry_content(new_word_entry)
             logging.info(
-                f"Added new word: {new_word_entry['word']}, "
-                f"Current word count: {len(all_words)}"
+                f"새 단어 추가 '{new_word_entry['word']}', "
+                f"저장된 단어 {len(all_words)}개"
             )
         else:
-            if should_modify(entry):
+            user_answer: str = should_edit(entry)
+            if user_answer == "edit":
                 modify_existing_word_prompt(entry)
                 modified = True
-                logging.info(f"Modified existing word: {entry['word']}")
+                print_entry_content(entry)
+                logging.info(f"수정된 단어 '{entry['word']}'")
+            elif user_answer == "delete":
+                all_words.remove(entry)
+                words_dict.pop(cast(str, entry["word"]))
+                modified = True
+                logging.info(f"단어 삭제 '{entry['word']}'")
 
     if modified:
         save_words_to_file(WORDS_FILE_NAME, all_words)
@@ -118,12 +159,16 @@ def execute_input_mode():
 
 # --------------------------------------------------
 def execute_quiz_mode():
-    """Execute quiz mode."""
+    """퀴즈 모드 실행"""
 
     all_words: WordDataList = load_words_from_file(WORDS_FILE_NAME)
+    unselected_word_count: int = 0
     for entry in all_words:
         normalize_entry(entry)
-    logging.info(f"Loaded word count: {len(all_words)}")
+        if entry["quiz_count"] == 0:
+            unselected_word_count += 1
+    logging.info(f"불러온 단어 {len(all_words)}개")
+    logging.info(f"한 번도 출제되지 않은 단어 {unselected_word_count}개")
     session_quiz_count: int = 1
 
     while True:
@@ -143,20 +188,24 @@ def execute_quiz_mode():
 # --------------------------------------------------
 def load_words_from_file(file_path: str) -> WordDataList:
     """
-    Loads word data from a JSON file.
-    Initializes an empty list if the file is not found or is invalid JSON.
+    JSON 파일에서 워드 데이터를 로드한다.
+    파일이 없다면 빈 리스트를 만들고,
+    로드하려는 파일이 유효하지 않다면 직접 수정할 수 있게 안내한다.
     """
 
     try:
         with open(file_path, "r", encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
-        logging.info(f"'{file_path}' not found. Creating a new word list.")
+        logging.info(
+            f"'{file_path}' 파일을 찾을 수 없습니다. 새로운 워드 데이터 파일을 "
+            "생성합니다."
+        )
         return []
     except json.JSONDecodeError:
         logging.error(
-            f"Failed to load '{file_path}': invalid JSON format. "
-            "Please check or fix the file manually."
+            f"'{file_path}', 유효하지 않은 JSON 포맷입니다. "
+            "파일을 직접 확인하고 수정하세요."
         )
         exit(1)
 
@@ -291,16 +340,7 @@ def show_quizzes(
         if user_answer.lower() == "q":
             return session_quiz_count, False
 
-        meanings: List[str] = []
-        for meaning, part_of_speech in cast(List[MeaningTuple], entry["meanings"]):
-            meanings.append(colorize(meaning, BLUE) + "(" + part_of_speech + ")")
-        print(", ".join(meanings))
-
-        notes: List[str] = []
-        for i, note in enumerate(cast(NotesList, entry["notes"])):
-            notes.append("({}) ".format(i + 1) + note)
-        if notes:
-            print(" ".join(notes))
+        print_entry_content(entry)
 
         while True:
             user_answer = input(
@@ -420,47 +460,56 @@ def input_notes() -> NotesList:
 
 
 # --------------------------------------------------
-def should_modify(entry: WordEntry) -> bool:
-    """
-    Display the details of the given word and ask the user
-    whether they want to modify it.
-    """
-
-    print(f"Word: {entry['word']}")
+def print_entry_content(entry: WordEntry):
+    """인자로 넘어 온 단어의 세부 내용(의미, 노트)을 출력한다."""
 
     meanings: List[str] = []
     for meaning, part_of_speech in cast(List[MeaningTuple], entry["meanings"]):
-        meanings.append(meaning + "(" + part_of_speech + ")")
+        meanings.append(colorize(meaning, BLUE) + "(" + part_of_speech + ")")
     print(", ".join(meanings))
 
     notes: List[str] = []
     for i, note in enumerate(cast(NotesList, entry["notes"])):
-        notes.append("({}) ".format(i + 1) + note)
+        notes.append("({}) ".format(i + 1) + colorize(note, BRIGHT_GREEN))
     if notes:
         print(" ".join(notes))
 
+
+# --------------------------------------------------
+def should_edit(entry: WordEntry) -> str:
+    """
+    인자로 넘어 온 단어의 디테일을 보여주고,
+    유저에게 이 단어를 어떻게 할 것인지 물어본다.
+    """
+
+    print(f"단어: {entry['word']}")
+    print_entry_content(entry)
+
     while True:
-        user_answer = input(
-            colorize("Modify this word? (1. Yes, 2. No): ", RED)
-        ).strip()
-        if user_answer == "1":
-            return True
-        elif user_answer == "2":
-            return False
-        else:
-            continue
+        user_answer = (
+            input(
+                colorize(
+                    "이 단어를 어떻게 처리할까요? (edit, leave or delete): ",
+                    RED,
+                )
+            )
+            .strip()
+            .lower()
+        )
+        if user_answer in ["edit", "leave", "delete"]:
+            return user_answer
 
 
 # --------------------------------------------------
 def normalize(s: str) -> str:
-    """Normalize a string to NFC form for consistent Unicode representation."""
+    """일관된 유니코드 표현을 위해 문자열을 NFC 형식으로 정규화한다."""
 
     return unicodedata.normalize("NFC", s)
 
 
 # --------------------------------------------------
 def normalize_entry(entry: WordEntry):
-    """Normalize all text fields of a given word entry using normalize()"""
+    """normalize()를 사용하여 주어진 워드 엔트리의 모든 텍스트 필드를 정규화한다."""
 
     entry["word"] = normalize(cast(str, entry["word"]))
 
